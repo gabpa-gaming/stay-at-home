@@ -6,3 +6,4 @@ export { HeroTitle } from './HeroTitle';
 export { HookSection } from './HookSection';
 export { ApiKeyInput } from './ApiKeyInput';
 export { TranscriptCard } from './TranscriptCard';
+export { TriageResultCard } from './TriageResultCard';

@@ -10,27 +10,58 @@ import {
   ViewStyle,
 } from 'react-native';
 import { theme } from '../theme/theme';
-import { validateGroqApiKey } from '../services/groq';
+import {
+  validateGroqApiKey,
+  analyzeSymptomsWithGroq,
+} from '../services/groq';
+import { TriageModelOutput } from '../prompts/triageConfig';
 import { useVoiceRecording } from '../hooks/useVoiceRecording';
 import { VoiceButton } from './VoiceButton';
 import { TranscriptCard } from './TranscriptCard';
+import { TriageResultCard } from './TriageResultCard';
 
 interface ApiKeyInputProps {
   onKeyValidated?: (apiKey: string) => void;
   onTranscriptReady?: (transcript: string) => void;
+  onTriageComplete?: (result: TriageModelOutput) => void;
   style?: StyleProp<ViewStyle>;
 }
 
 /**
  * Inner component active once a valid Groq API key is present.
  * Connects the microphone with real-time volume reaction,
- * automatic silence detection auto-stop, and temporary speech-to-text display.
+ * automatic silence detection auto-stop, Groq Whisper speech-to-text,
+ * and Groq reasoning model triage classification.
  */
 const ActiveVoiceSection: React.FC<{
   apiKey: string;
   onResetKey: () => void;
   onTranscriptReady?: (transcript: string) => void;
-}> = ({ apiKey, onResetKey, onTranscriptReady }) => {
+  onTriageComplete?: (result: TriageModelOutput) => void;
+}> = ({ apiKey, onResetKey, onTranscriptReady, onTriageComplete }) => {
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [triageResult, setTriageResult] = useState<TriageModelOutput | null>(null);
+  const [triageError, setTriageError] = useState<string | null>(null);
+
+  const handleTranscriptCompleted = async (newTranscript: string) => {
+    onTranscriptReady?.(newTranscript);
+
+    // Call Groq reasoning model to classify symptoms and provide triage
+    setIsAnalyzing(true);
+    setTriageError(null);
+
+    const triageRes = await analyzeSymptomsWithGroq(newTranscript, apiKey);
+
+    setIsAnalyzing(false);
+
+    if (triageRes.success && triageRes.data) {
+      setTriageResult(triageRes.data);
+      onTriageComplete?.(triageRes.data);
+    } else {
+      setTriageError(triageRes.error || 'Nie udało się przeanalizować objawów.');
+    }
+  };
+
   const {
     isRecording,
     isTranscribing,
@@ -42,8 +73,14 @@ const ActiveVoiceSection: React.FC<{
     clearTranscript,
   } = useVoiceRecording({
     apiKey,
-    onTranscriptReady,
+    onTranscriptReady: handleTranscriptCompleted,
   });
+
+  const handleStartNewConsultation = () => {
+    setTriageResult(null);
+    setTriageError(null);
+    clearTranscript();
+  };
 
   return (
     <View style={styles.validatedContainer}>
@@ -51,16 +88,16 @@ const ActiveVoiceSection: React.FC<{
       <View style={styles.activeKeyChip}>
         <View style={styles.greenCheckDot} />
         <Text style={styles.activeKeyText}>
-          Groq Whisper aktywny ({apiKey.slice(0, 4)}...{apiKey.slice(-4)})
+          Groq AI aktywny ({apiKey.slice(0, 4)}...{apiKey.slice(-4)})
         </Text>
         <Pressable
           onPress={onResetKey}
-          disabled={isRecording || isTranscribing}
+          disabled={isRecording || isTranscribing || isAnalyzing}
           accessibilityRole="button"
           accessibilityLabel="Zmień klucz API"
           style={({ pressed }) => [
             styles.changeKeyBtn,
-            (isRecording || isTranscribing) && styles.btnDisabled,
+            (isRecording || isTranscribing || isAnalyzing) && styles.btnDisabled,
             pressed && styles.btnPressed,
           ]}
         >
@@ -72,13 +109,20 @@ const ActiveVoiceSection: React.FC<{
       <VoiceButton
         onPress={toggleRecording}
         isRecording={isRecording}
-        isTranscribing={isTranscribing}
+        isTranscribing={isTranscribing || isAnalyzing}
         volume={volume}
         silenceDetected={silenceDetected}
+        statusMessage={
+          isAnalyzing
+            ? 'Model wnioskujący AI analizuje objawy...'
+            : isTranscribing
+            ? 'Transkrypcja mowy (Groq Whisper)...'
+            : undefined
+        }
       />
 
       {/* Temporary Speech-to-Text Transcript Display */}
-      {transcript && (
+      {transcript && !triageResult && (
         <TranscriptCard
           transcript={transcript}
           onDismiss={clearTranscript}
@@ -86,11 +130,32 @@ const ActiveVoiceSection: React.FC<{
         />
       )}
 
+      {/* Analyzing Symptoms Loading Card */}
+      {isAnalyzing && (
+        <View style={styles.analyzingCard}>
+          <ActivityIndicator size="small" color={theme.colors.darkBlue[600]} />
+          <View style={styles.analyzingContent}>
+            <Text style={styles.analyzingTitle}>Model wnioskujący analizuje objawy</Text>
+            <Text style={styles.analyzingSubtitle}>
+              Kategoryzacja ryzyka i ocena wskazań do pozostania w domu...
+            </Text>
+          </View>
+        </View>
+      )}
+
+      {/* Triage Result Response Component (Green / Yellow / Orange / Red / Gray) */}
+      {triageResult && (
+        <TriageResultCard
+          result={triageResult}
+          onReset={handleStartNewConsultation}
+        />
+      )}
+
       {/* Recording or Transcription Error Message */}
-      {recordingError && (
+      {(recordingError || triageError) && (
         <View style={styles.recordingErrorBox}>
           <View style={styles.errorDot} />
-          <Text style={styles.recordingErrorText}>{recordingError}</Text>
+          <Text style={styles.recordingErrorText}>{recordingError || triageError}</Text>
         </View>
       )}
     </View>
@@ -100,13 +165,14 @@ const ActiveVoiceSection: React.FC<{
 /**
  * GroqApiKeyInput Component
  *
- * Provides a secure, clinical input field for the Groq Whisper API key.
+ * Provides a secure, clinical input field for the Groq API key.
  * Validates the key against the Groq API.
- * Upon successful validation, replaces the input field with the active microphone.
+ * Upon successful validation, replaces the input field with the active microphone & triage view.
  */
 export const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
   onKeyValidated,
   onTranscriptReady,
+  onTriageComplete,
   style,
 }) => {
   const [apiKey, setApiKey] = useState('');
@@ -144,7 +210,7 @@ export const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
     setErrorMessage(null);
   };
 
-  // If key is validated, display the active microphone & speech-to-text view
+  // If key is validated, display the active microphone & speech-to-text / triage view
   if (validatedKey) {
     return (
       <View style={[{ width: '100%' }, style]}>
@@ -152,6 +218,7 @@ export const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
           apiKey={validatedKey}
           onResetKey={handleResetKey}
           onTranscriptReady={onTranscriptReady}
+          onTriageComplete={onTriageComplete}
         />
       </View>
     );
@@ -169,14 +236,14 @@ export const ApiKeyInput: React.FC<ApiKeyInputProps> = ({
           <View style={styles.keyTooth2} />
         </View>
         <View style={styles.headerTitles}>
-          <Text style={styles.title}>Autoryzacja Groq Whisper</Text>
-          <Text style={styles.subtitle}>Klucz API wymagany do transkrypcji mowy</Text>
+          <Text style={styles.title}>Autoryzacja Groq AI</Text>
+          <Text style={styles.subtitle}>Klucz API do transkrypcji mowy i analizy medycznej</Text>
         </View>
       </View>
 
       {/* Description */}
       <Text style={styles.description}>
-        Aby opisać objawy głosem, podaj swój klucz API Groq. Aplikacja sprawdzi jego poprawność przed uruchomieniem mikrofonu.
+        Aby opisać objawy głosem i uzyskać analizę wnioskującą AI, podaj swój klucz API Groq. Aplikacja sprawdzi jego poprawność przed uruchomieniem mikrofonu.
       </Text>
 
       {/* Input Field Container */}
@@ -440,6 +507,33 @@ const styles = StyleSheet.create({
     borderColor: '#FECACA',
     padding: theme.geometry.spacing[8],
     marginBottom: theme.geometry.spacing[10],
+  },
+  analyzingCard: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    backgroundColor: theme.colors.white,
+    borderRadius: theme.geometry.radii.md,
+    borderWidth: theme.geometry.borderWidths.thin,
+    borderColor: theme.colors.coldGray[200],
+    padding: theme.geometry.spacing[12],
+    marginVertical: theme.geometry.spacing[10],
+    width: '100%',
+  },
+  analyzingContent: {
+    marginLeft: theme.geometry.spacing[10],
+    flex: 1,
+  },
+  analyzingTitle: {
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.sizes.bodySm,
+    fontWeight: theme.typography.weights.semiBold,
+    color: theme.colors.darkBlue[900],
+  },
+  analyzingSubtitle: {
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.sizes.micro,
+    color: theme.colors.coldGray[500],
+    marginTop: 2,
   },
   recordingErrorBox: {
     flexDirection: 'row',
