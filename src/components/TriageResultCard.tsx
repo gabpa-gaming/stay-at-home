@@ -16,6 +16,7 @@ import {
 
 interface TriageResultCardProps {
   result: TriageModelOutput;
+  transcript?: string;
   onReset?: () => void;
   style?: StyleProp<ViewStyle>;
 }
@@ -31,10 +32,12 @@ interface TriageResultCardProps {
  * - Red: Zagrożenie życia - Natychmiast idź do szpitala
  * - Gray: Out of scope
  *
- * Shows detected symptoms, clinical reasoning, and concrete action advice.
+ * Displays the recorded patient transcript, detected symptoms, clinical reasoning,
+ * and concrete action advice with modern medical styling and thin outlines.
  */
 export const TriageResultCard: React.FC<TriageResultCardProps> = ({
   result,
+  transcript,
   onReset,
   style,
 }) => {
@@ -112,6 +115,19 @@ export const TriageResultCard: React.FC<TriageResultCardProps> = ({
           </Pressable>
         </View>
       )}
+
+      {/* Patient's Voice Transcript Section */}
+      {transcript ? (
+        <View style={styles.transcriptSection}>
+          <View style={styles.sectionHeaderRow}>
+            <View style={styles.micDot} />
+            <Text style={styles.sectionHeader}>Zarejestrowana wypowiedź:</Text>
+          </View>
+          <View style={styles.transcriptBox}>
+            <Text style={styles.transcriptText}>„{transcript}”</Text>
+          </View>
+        </View>
+      ) : null}
 
       {/* Extracted Symptoms Tags */}
       {result.symptoms && result.symptoms.length > 0 && (
@@ -268,6 +284,21 @@ const styles = StyleSheet.create({
     fontWeight: theme.typography.weights.bold,
     color: '#991B1B',
   },
+  transcriptSection: {
+    marginBottom: theme.geometry.spacing[12],
+  },
+  sectionHeaderRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    marginBottom: theme.geometry.spacing[4],
+  },
+  micDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: theme.colors.darkBlue[600],
+    marginRight: theme.geometry.spacing[6],
+  },
   sectionContainer: {
     marginBottom: theme.geometry.spacing[12],
   },
@@ -279,6 +310,21 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
     letterSpacing: theme.typography.letterSpacing.wide,
     marginBottom: theme.geometry.spacing[6],
+  },
+  transcriptBox: {
+    backgroundColor: 'rgba(255, 255, 255, 0.88)',
+    borderRadius: theme.geometry.radii.sm,
+    borderWidth: theme.geometry.borderWidths.thin,
+    borderColor: 'rgba(0, 0, 0, 0.08)',
+    padding: theme.geometry.spacing[10],
+  },
+  transcriptText: {
+    fontFamily: theme.typography.fontFamily,
+    fontSize: theme.typography.sizes.bodySm,
+    fontWeight: theme.typography.weights.medium,
+    color: theme.colors.darkBlue[900],
+    lineHeight: theme.typography.sizes.bodySm * theme.typography.lineHeights.normal,
+    fontStyle: 'italic',
   },
   symptomsTagRow: {
     flexDirection: 'row',

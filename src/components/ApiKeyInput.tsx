@@ -17,7 +17,6 @@ import {
 import { TriageModelOutput } from '../prompts/triageConfig';
 import { useVoiceRecording } from '../hooks/useVoiceRecording';
 import { VoiceButton } from './VoiceButton';
-import { TranscriptCard } from './TranscriptCard';
 import { TriageResultCard } from './TriageResultCard';
 
 interface ApiKeyInputProps {
@@ -121,15 +120,6 @@ const ActiveVoiceSection: React.FC<{
         }
       />
 
-      {/* Temporary Speech-to-Text Transcript Display */}
-      {transcript && !triageResult && (
-        <TranscriptCard
-          transcript={transcript}
-          onDismiss={clearTranscript}
-          autoHideDurationSeconds={14}
-        />
-      )}
-
       {/* Analyzing Symptoms Loading Card */}
       {isAnalyzing && (
         <View style={styles.analyzingCard}>
@@ -143,10 +133,11 @@ const ActiveVoiceSection: React.FC<{
         </View>
       )}
 
-      {/* Triage Result Response Component (Green / Yellow / Orange / Red / Gray) */}
+      {/* Triage Result Response Component (Green / Yellow / Orange / Red / Gray) with Transcript */}
       {triageResult && (
         <TriageResultCard
           result={triageResult}
+          transcript={transcript || undefined}
           onReset={handleStartNewConsultation}
         />
       )}

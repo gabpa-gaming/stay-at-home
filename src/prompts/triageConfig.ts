@@ -48,7 +48,7 @@ KATEGORIE TRIAGE (wybierz dokładnie jedną wartość pola "category"):
 
 ZASADY ODPOWIEDZI:
 - Wyodrębnij konkretne objawy do tablicy "symptoms" (w języku polskim).
-- W polu "reasoning" uzasadnij zwięźle i profesjonalnie po polsku swój tok rozumowania medycznego (2-3 zdania).
+- W polu "reasoning" uzasadnij zwięźle i profesjonalnie po polsku swój tok rozumowania medycznego (2-3 zdania). Pole reasoning powinno mieć tylko informacje dla użytkownika/pacjenta
 - Zwróć WYŁĄCZNIE poprawny dokument JSON bez znaczników markdown, bez zbędnych słów.
 
 FORMAT JSON:
