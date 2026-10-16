@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useEffect, useRef } from 'react';
 import {
   View,
   Text,
@@ -7,12 +7,18 @@ import {
   StyleProp,
   ViewStyle,
   Animated,
+  ActivityIndicator,
 } from 'react-native';
 import { theme } from '../theme/theme';
 import { MicrophoneIcon } from './MicrophoneIcon';
 
 interface VoiceButtonProps {
   onPress?: () => void;
+  isRecording?: boolean;
+  isTranscribing?: boolean;
+  volume?: number; // Normalized 0.0 to 1.0
+  silenceDetected?: boolean;
+  statusMessage?: string;
   style?: StyleProp<ViewStyle>;
 }
 
@@ -20,70 +26,159 @@ interface VoiceButtonProps {
  * VoiceButton Component
  *
  * Prominent white microphone icon centered inside an authoritative blue circle.
- * Surrounded by thin, geometrical concentric outline rings that evoke
- * safe acoustic triage, clarity, and precision.
+ * Reacts dynamically to volume levels via expanding concentric geometric rings
+ * and a soundwave meter. Communicates recording, silence detection, and transcription states.
  */
-export const VoiceButton: React.FC<VoiceButtonProps> = ({ onPress, style }) => {
-  const [isListening, setIsListening] = useState(false);
-  const [scaleAnim] = useState(new Animated.Value(1));
+export const VoiceButton: React.FC<VoiceButtonProps> = ({
+  onPress,
+  isRecording = false,
+  isTranscribing = false,
+  volume = 0,
+  silenceDetected = false,
+  statusMessage,
+  style,
+}) => {
+  const pressAnim = useRef(new Animated.Value(1)).current;
+  const volumeAnim = useRef(new Animated.Value(0)).current;
+
+  // Animate volume changes smoothly
+  useEffect(() => {
+    Animated.timing(volumeAnim, {
+      toValue: isRecording ? volume : 0,
+      duration: 70,
+      useNativeDriver: true,
+    }).start();
+  }, [volume, isRecording, volumeAnim]);
 
   const handlePressIn = () => {
-    Animated.spring(scaleAnim, {
+    Animated.spring(pressAnim, {
       toValue: 0.94,
       useNativeDriver: true,
-      speed: 20,
+      speed: 25,
     }).start();
   };
 
   const handlePressOut = () => {
-    Animated.spring(scaleAnim, {
+    Animated.spring(pressAnim, {
       toValue: 1,
       useNativeDriver: true,
-      speed: 20,
+      speed: 25,
     }).start();
   };
 
-  const handlePress = () => {
-    setIsListening((prev) => !prev);
-    onPress?.();
+  // Dynamic scale interpolations based on volume
+  const outerRing2Scale = volumeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.34],
+  });
+
+  const outerRing1Scale = volumeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.20],
+  });
+
+  const circleScale = volumeAnim.interpolate({
+    inputRange: [0, 1],
+    outputRange: [1, 1.08],
+  });
+
+  const getStatusText = () => {
+    if (statusMessage) return statusMessage;
+    if (isTranscribing) return 'Transkrypcja mowy (Groq Whisper)...';
+    if (isRecording) {
+      return silenceDetected
+        ? 'Wykryto ciszę... zatrzymywanie'
+        : 'Słucham... opisz objawy';
+    }
+    return 'Dotknij, aby opisać objawy';
+  };
+
+  const getSubStatusText = () => {
+    if (isTranscribing) return 'Konwersja głosu na tekst w toku';
+    if (isRecording) {
+      return silenceDetected
+        ? 'Automatyczne wyłączenie po kilku sekundach ciszy'
+        : 'Mów swobodnie o swoich dolegliwościach';
+    }
+    return 'Wystarczy krótka wypowiedź głosem';
   };
 
   return (
     <View style={[styles.wrapper, style]}>
-      {/* Outer Concentric Geometric Ring (Thin Outline) */}
-      <View
+      {/* Outer Concentric Geometric Ring (reacts to volume) */}
+      <Animated.View
         style={[
           styles.outerRing2,
-          isListening && styles.outerRing2Active,
+          isRecording && styles.outerRing2Active,
+          silenceDetected && styles.outerRing2Silence,
+          { transform: [{ scale: outerRing2Scale }] },
         ]}
       >
-        {/* Middle Concentric Geometric Ring (Thin Outline) */}
-        <View
+        {/* Middle Concentric Geometric Ring (reacts to volume) */}
+        <Animated.View
           style={[
             styles.outerRing1,
-            isListening && styles.outerRing1Active,
+            isRecording && styles.outerRing1Active,
+            silenceDetected && styles.outerRing1Silence,
+            { transform: [{ scale: outerRing1Scale }] },
           ]}
         >
           {/* Main Blue Circle Action Button */}
-          <Animated.View style={{ transform: [{ scale: scaleAnim }] }}>
+          <Animated.View
+            style={{
+              transform: [
+                { scale: pressAnim },
+                { scale: circleScale },
+              ],
+            }}
+          >
             <Pressable
-              onPress={handlePress}
+              onPress={onPress}
               onPressIn={handlePressIn}
               onPressOut={handlePressOut}
+              disabled={isTranscribing}
               accessibilityRole="button"
-              accessibilityLabel="Rozpocznij nagrywanie objawów"
-              accessibilityHint="Dotknij, aby uruchomić medyczną analizę głosową objawów"
+              accessibilityLabel={isRecording ? 'Zatrzymaj nagrywanie' : 'Rozpocznij nagrywanie objawów'}
+              accessibilityHint="Dotknij, aby nagrać opis dolegliwości"
               style={({ pressed }) => [
                 styles.blueCircle,
                 pressed && styles.blueCirclePressed,
-                isListening && styles.blueCircleListening,
+                isRecording && styles.blueCircleListening,
+                isTranscribing && styles.blueCircleTranscribing,
               ]}
             >
-              <MicrophoneIcon size={38} color={theme.colors.white} />
+              {isTranscribing ? (
+                <ActivityIndicator size="small" color={theme.colors.white} />
+              ) : (
+                <MicrophoneIcon size={38} color={theme.colors.white} />
+              )}
             </Pressable>
           </Animated.View>
+        </Animated.View>
+      </Animated.View>
+
+      {/* Real-time Audio Level Soundwave Visualizer (reacts to volume) */}
+      {isRecording && (
+        <View style={styles.waveformContainer}>
+          {[0.5, 0.8, 1.0, 0.8, 0.5].map((multiplier, idx) => {
+            const barHeight = Math.max(4, Math.round(6 + volume * 24 * multiplier));
+            return (
+              <View
+                key={idx}
+                style={[
+                  styles.waveformBar,
+                  {
+                    height: barHeight,
+                    backgroundColor: silenceDetected
+                      ? theme.colors.coldGray[400]
+                      : theme.colors.darkBlue[600],
+                  },
+                ]}
+              />
+            );
+          })}
         </View>
-      </View>
+      )}
 
       {/* Button Subtitle / Status Prompt */}
       <View style={styles.promptContainer}>
@@ -91,16 +186,18 @@ export const VoiceButton: React.FC<VoiceButtonProps> = ({ onPress, style }) => {
           <View
             style={[
               styles.statusDot,
-              isListening ? styles.statusDotListening : styles.statusDotReady,
+              isTranscribing
+                ? styles.statusDotTranscribing
+                : isRecording
+                ? silenceDetected
+                  ? styles.statusDotSilence
+                  : styles.statusDotListening
+                : styles.statusDotReady,
             ]}
           />
-          <Text style={styles.promptText}>
-            {isListening ? 'Słucham... opisz objawy' : 'Dotknij, aby opisać objawy'}
-          </Text>
+          <Text style={styles.promptText}>{getStatusText()}</Text>
         </View>
-        <Text style={styles.subPromptText}>
-          {isListening ? 'Mów swobodnie o dolegliwościach' : 'Wystarczy krótka wypowiedź głosem'}
-        </Text>
+        <Text style={styles.subPromptText}>{getSubStatusText()}</Text>
       </View>
     </View>
   );
@@ -114,7 +211,7 @@ const styles = StyleSheet.create({
   wrapper: {
     alignItems: 'center',
     justifyContent: 'center',
-    marginVertical: theme.geometry.spacing[20],
+    marginVertical: theme.geometry.spacing[16],
   },
   outerRing2: {
     width: RING_2_SIZE,
@@ -130,6 +227,10 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.overlay.blueRing,
     backgroundColor: theme.colors.darkBlue[50],
   },
+  outerRing2Silence: {
+    borderColor: theme.colors.coldGray[300],
+    backgroundColor: theme.colors.coldGray[100],
+  },
   outerRing1: {
     width: RING_1_SIZE,
     height: RING_1_SIZE,
@@ -144,6 +245,9 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.darkBlue[400],
     backgroundColor: theme.colors.darkBlue[100],
   },
+  outerRing1Silence: {
+    borderColor: theme.colors.coldGray[300],
+  },
   blueCircle: {
     width: BUTTON_SIZE,
     height: BUTTON_SIZE,
@@ -153,7 +257,6 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.darkBlue[700],
     alignItems: 'center',
     justifyContent: 'center',
-    // Elevation / subtle focus ring
     shadowColor: theme.colors.darkBlue[900],
     shadowOffset: { width: 0, height: 4 },
     shadowOpacity: 0.12,
@@ -167,9 +270,25 @@ const styles = StyleSheet.create({
     backgroundColor: theme.colors.darkBlue[700],
     borderColor: theme.colors.darkBlue[400],
   },
+  blueCircleTranscribing: {
+    backgroundColor: theme.colors.darkBlue[800],
+    borderColor: theme.colors.darkBlue[500],
+  },
+  waveformContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 4,
+    height: 32,
+    marginTop: theme.geometry.spacing[8],
+  },
+  waveformBar: {
+    width: 3.5,
+    borderRadius: 2,
+  },
   promptContainer: {
     alignItems: 'center',
-    marginTop: theme.geometry.spacing[16],
+    marginTop: theme.geometry.spacing[12],
   },
   statusIndicatorRow: {
     flexDirection: 'row',
@@ -187,6 +306,12 @@ const styles = StyleSheet.create({
   },
   statusDotListening: {
     backgroundColor: theme.colors.darkBlue[600],
+  },
+  statusDotSilence: {
+    backgroundColor: '#EAB308', // Amber warning for silence countdown
+  },
+  statusDotTranscribing: {
+    backgroundColor: theme.colors.darkBlue[400],
   },
   promptText: {
     fontFamily: theme.typography.fontFamily,

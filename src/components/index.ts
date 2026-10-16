@@ -4,3 +4,5 @@ export { VoiceButton } from './VoiceButton';
 export { Header } from './Header';
 export { HeroTitle } from './HeroTitle';
 export { HookSection } from './HookSection';
+export { ApiKeyInput } from './ApiKeyInput';
+export { TranscriptCard } from './TranscriptCard';
